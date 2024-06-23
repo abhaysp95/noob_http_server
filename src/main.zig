@@ -28,7 +28,7 @@ pub fn main() !void {
     const req_target = iter.next().?;
 
     if (std.mem.eql(u8, req_target, "/")) {
-        _ = try conn_writer.write("HTTP/1.1 200 Ok\r\n\r\n");
+        _ = try conn_writer.write("HTTP/1.1 200 OK\r\n\r\n");
     } else if (!std.mem.startsWith(u8, req_target, "/echo")) {
         _ = try conn_writer.write("HTTP/1.1 404 Not Found\r\n\r\n");
     } else {
