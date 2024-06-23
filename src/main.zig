@@ -27,7 +27,9 @@ pub fn main() !void {
     _ = iter.next(); // no need for HTTP method
     const req_target = iter.next().?;
 
-    if (!std.mem.startsWith(u8, req_target, "/echo")) {
+    if (std.mem.eql(u8, req_target, "/")) {
+        _ = try conn_writer.write("HTTP/1.1 200 Ok\r\n\r\n");
+    } else if (!std.mem.startsWith(u8, req_target, "/echo")) {
         _ = try conn_writer.write("HTTP/1.1 404 Not Found\r\n\r\n");
     } else {
         // split to get endpoint heirarchy
