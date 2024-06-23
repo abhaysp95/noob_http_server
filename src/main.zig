@@ -25,12 +25,23 @@ pub fn main() !void {
 
     var iter = std.mem.splitSequence(u8, req_line, " ");
     _ = iter.next(); // no need for HTTP method
-    var req_target = iter.next().?;
-    req_target = req_target[1..];
+    const req_target = iter.next().?;
 
-    // writer status line
-    _ = try conn_writer.write("HTTP/1.1 200 OK\r\n");
-    _ = try conn_writer.write("Content-Type: text/plain\r\n");
-    _ = try conn_writer.print("Content-Length: {d}\r\n\r\n", .{req_target.len});
-    _ = try conn_writer.print("{s}\r\n", .{req_target});
+    if (!std.mem.eql(u8, req_target, "/echo/abc")) {
+        _ = try conn_writer.write("HTTP/1.1 404 Not Found\r\n");
+    } else {
+
+        // split to get endpoint heirarchy
+        var target_level_iter = std.mem.tokenizeSequence(u8, req_target, "/");
+        var resource: []const u8 = undefined;
+        while (target_level_iter.next()) |res| {
+            resource = res;
+        }
+
+        // writer status line
+        _ = try conn_writer.write("HTTP/1.1 200 OK\r\n");
+        _ = try conn_writer.write("Content-Type: text/plain\r\n");
+        _ = try conn_writer.print("Content-Length: {d}\r\n\r\n", .{resource.len});
+        _ = try conn_writer.print("{s}\r\n", .{resource});
+    }
 }
