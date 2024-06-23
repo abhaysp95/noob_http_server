@@ -28,7 +28,7 @@ pub fn main() !void {
     const req_target = iter.next().?;
 
     if (!std.mem.eql(u8, req_target, "/echo/abc")) {
-        _ = try conn_writer.write("HTTP/1.1 404 Not Found\r\n");
+        _ = try conn_writer.write("HTTP/1.1 404 Not Found\r\n\r\n");
     } else {
 
         // split to get endpoint heirarchy
@@ -42,6 +42,6 @@ pub fn main() !void {
         _ = try conn_writer.write("HTTP/1.1 200 OK\r\n");
         _ = try conn_writer.write("Content-Type: text/plain\r\n");
         _ = try conn_writer.print("Content-Length: {d}\r\n\r\n", .{resource.len});
-        _ = try conn_writer.print("{s}\r\n", .{resource});
+        _ = try conn_writer.print("{s}", .{resource});
     }
 }
