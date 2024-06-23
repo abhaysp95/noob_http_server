@@ -25,13 +25,12 @@ pub fn main() !void {
 
     var iter = std.mem.splitSequence(u8, req_line, " ");
     _ = iter.next(); // no need for HTTP method
-    const req_target = iter.next().?;
+    var req_target = iter.next().?;
+    req_target = req_target[1..];
 
-    if (req_target.len > 1) {
-        // ignoring the len of buf written
-        _ = try conn_writer.write("HTTP/1.1 404 Not Found\r\n\r\n");
-    } else {
-        // ignoring the len of buf written
-        _ = try conn_writer.write("HTTP/1.1 200 OK\r\n\r\n");
-    }
+    // writer status line
+    _ = try conn_writer.write("HTTP/1.1 200 OK\r\n");
+    _ = try conn_writer.write("Content-Type: text/plain\r\n");
+    _ = try conn_writer.print("Content-Length: {d}\r\n\r\n", .{req_target.len});
+    _ = try conn_writer.print("{s}\r\n", .{req_target});
 }
