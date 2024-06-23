@@ -27,7 +27,7 @@ pub fn main() !void {
     _ = iter.next(); // no need for HTTP method
     const req_target = iter.next().?;
 
-    if (!std.mem.eql(u8, req_target, "/echo/abc")) {
+    if (!std.mem.eql(u8, req_target[0..5], "/echo")) {
         _ = try conn_writer.write("HTTP/1.1 404 Not Found\r\n\r\n");
     } else {
 
