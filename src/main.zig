@@ -14,8 +14,24 @@ pub fn main() !void {
     defer connection.stream.close();
     try stdout.print("client connected!", .{});
 
+    var conn_reader = connection.stream.reader();
     var conn_writer = connection.stream.writer();
 
-    // ignoring the len of buf written
-    _ = try conn_writer.write("HTTP/1.1 200 OK\r\n\r\n");
+    var buf: [1024]u8 = undefined;
+    _ = try conn_reader.read(&buf);
+
+    var crlf_iter = std.mem.splitSequence(u8, &buf, "\r\n");
+    const req_line = crlf_iter.next().?;
+
+    var iter = std.mem.splitSequence(u8, req_line, " ");
+    _ = iter.next(); // no need for HTTP method
+    const req_target = iter.next().?;
+
+    if (req_target.len > 1) {
+        // ignoring the len of buf written
+        _ = try conn_writer.write("HTTP/1.1 404 Not Found\r\n\r\n");
+    } else {
+        // ignoring the len of buf written
+        _ = try conn_writer.write("HTTP/1.1 200 OK\r\n\r\n");
+    }
 }
