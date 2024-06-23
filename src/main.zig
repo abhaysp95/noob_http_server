@@ -10,6 +10,12 @@ pub fn main() !void {
     });
     defer listener.deinit();
 
-    _ = try listener.accept();
+    var connection = try listener.accept();
+    defer connection.stream.close();
     try stdout.print("client connected!", .{});
+
+    var conn_writer = connection.stream.writer();
+
+    // ignoring the len of buf written
+    _ = try conn_writer.write("HTTP/1.1 200 OK\r\n\r\n");
 }
