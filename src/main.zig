@@ -27,10 +27,9 @@ pub fn main() !void {
     _ = iter.next(); // no need for HTTP method
     const req_target = iter.next().?;
 
-    if (!std.mem.eql(u8, req_target[0..5], "/echo")) {
+    if (!std.mem.startsWith(u8, req_target, "/echo")) {
         _ = try conn_writer.write("HTTP/1.1 404 Not Found\r\n\r\n");
     } else {
-
         // split to get endpoint heirarchy
         var target_level_iter = std.mem.tokenizeSequence(u8, req_target, "/");
         var resource: []const u8 = undefined;
