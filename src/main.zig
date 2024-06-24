@@ -2,6 +2,7 @@ const std = @import("std");
 const net = std.net;
 const Connection = std.net.Server.Connection;
 const HashMap = std.StringHashMap([]const u8);
+const debug = std.debug.print;
 const stdout = std.io.getStdOut().writer();
 
 const Request = struct { status: []const u8, headers: ?HashMap, body: ?[]const u8 };
@@ -26,22 +27,11 @@ pub fn main() !void {
     const req = try parse_request(&connection, allocator);
     const resp = try make_response(&req, allocator);
     try send_resp(&connection, &resp);
-
-    try stdout.print("status line: {s}\n", .{resp.status});
-    if (resp.headers) |headers| {
-        var header_iter = headers.iterator();
-        while (header_iter.next()) |entry| {
-            try stdout.print("{s}: {s}\r\n", .{ entry.key_ptr.*, entry.value_ptr.* });
-        }
-    }
-    if (resp.body) |body| {
-        try stdout.writeAll(body);
-    }
 }
 
 fn parse_request(conn: *const Connection, allocator: std.mem.Allocator) !Request {
     var buf: [1024]u8 = undefined;
-    const buf_len = try conn.stream.readAll(&buf);
+    const buf_len = try conn.stream.read(&buf);
 
     var cursor = std.mem.indexOf(u8, &buf, "\r\n");
     const status = try allocator.alloc(u8, cursor.?);
@@ -57,7 +47,7 @@ fn parse_request(conn: *const Connection, allocator: std.mem.Allocator) !Request
             break;
         }
         const colon_idx = std.mem.indexOf(u8, header, ": ");
-        try headers.put(header[0..colon_idx.?], header[colon_idx.? + 1 ..]);
+        try headers.put(try std.fmt.allocPrint(allocator, "{s}", .{header[0..colon_idx.?]}), try std.fmt.allocPrint(allocator, "{s}", .{header[colon_idx.? + 2 ..]}));
         cursor.? += header.len + 2;
     }
 
