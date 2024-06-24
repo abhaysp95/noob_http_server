@@ -34,8 +34,7 @@ fn parse_request(conn: *const Connection, allocator: std.mem.Allocator) !Request
     const buf_len = try conn.stream.read(&buf);
 
     var cursor = std.mem.indexOf(u8, &buf, "\r\n");
-    const status = try allocator.alloc(u8, cursor.?);
-    std.mem.copyForwards(u8, status, buf[0..cursor.?]);
+    const status = try allocator.dupe(u8, buf[0..cursor.?]);
     cursor.? += 1;
 
     var headers = HashMap.init(allocator);
@@ -47,14 +46,15 @@ fn parse_request(conn: *const Connection, allocator: std.mem.Allocator) !Request
             break;
         }
         const colon_idx = std.mem.indexOf(u8, header, ": ");
-        try headers.put(try std.fmt.allocPrint(allocator, "{s}", .{header[0..colon_idx.?]}), try std.fmt.allocPrint(allocator, "{s}", .{header[colon_idx.? + 2 ..]}));
+        const key = try allocator.dupe(u8, header[0..colon_idx.?]);
+        const value = try allocator.dupe(u8, header[colon_idx.? + 2 ..]);
+        try headers.put(key, value);
         cursor.? += header.len + 2;
     }
 
     var body: ?[]u8 = null;
     if (buf_len > cursor.? + 1) {
-        body = try allocator.alloc(u8, buf_len - cursor.?);
-        std.mem.copyForwards(u8, body.?, buf[cursor.?..buf_len]);
+        body = try allocator.dupe(u8, buf[cursor.?..buf_len]);
     }
 
     return .{
@@ -81,7 +81,7 @@ fn make_response(req: *const Request, allocator: std.mem.Allocator) !Response {
         try headers.put("Content-Type", "text/plain");
         try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{req.headers.?.get("User-Agent").?.len}));
         return .{
-            .status = "HTTP/1.1 200 OK\r\n\r\n",
+            .status = "HTTP/1.1 200 OK\r\n",
             .headers = headers,
             .body = try std.fmt.allocPrint(allocator, "{s}", .{req.headers.?.get("User-Agent").?}),
         };
