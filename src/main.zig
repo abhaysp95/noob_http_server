@@ -3,14 +3,43 @@ const http = @import("./lib.zig");
 const net = std.net;
 const Connection = std.net.Server.Connection;
 const HashMap = std.StringHashMap([]const u8);
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+var arena = std.heap.ArenaAllocator.init(gpa.allocator());
 const debug = std.debug.print;
 const stdout = std.io.getStdOut().writer();
 
+fn sigint_handler(signum: i32) callconv(.C) void {
+    debug("Caught the signal {d}. Exiting gracefully...\n", .{signum});
+    // do cleanup
+    arena.deinit();
+
+    std.process.exit(1);
+}
+
+fn register_signal() void {
+    var sa = std.posix.Sigaction{
+        .handler = .{
+            .handler = sigint_handler,
+        },
+        .mask = std.posix.empty_sigset,
+        .flags = 0,
+    };
+
+    std.posix.sigaction(std.posix.SIG.INT, &sa, null) catch |err| {
+        debug("registering signal handler failed: {}\n", .{err});
+        std.process.exit(1);
+    };
+
+    while (true) {
+        // .. wait indefinitely for signal
+    }
+}
+
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     const allocator = arena.allocator();
     defer arena.deinit();
+
+    _ = try std.Thread.spawn(.{}, register_signal, .{});
 
     const address = try net.Address.resolveIp("127.0.0.1", 4221);
     var listener = try address.listen(.{
