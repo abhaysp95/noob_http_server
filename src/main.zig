@@ -39,8 +39,14 @@ fn register_signal() void {
 const THREAD_COUNT = 7;
 
 fn handle_connection(connection: Connection, allocator: std.mem.Allocator) void {
-    const req = http.parse_request(&connection, allocator) catch return handle_error(&connection);
-    handle_endpoints(&connection, &req, allocator) catch return handle_error(&connection);
+    const req = http.parse_request(&connection, allocator) catch |err| {
+        debug("{}\n", .{err});
+        return handle_error(&connection);
+    };
+    handle_endpoints(&connection, &req, allocator) catch |err| {
+        debug("{}\n", .{err});
+        return handle_error(&connection);
+    };
 }
 
 pub fn main() !void {
@@ -78,10 +84,11 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
     const endpoint = req_status_iter.next().?;
 
     var response: http.Response = undefined;
+    var headers = HashMap.init(allocator);
     if (std.mem.eql(u8, endpoint, "/")) {
-        response = http.Response.ok();
+        try headers.put("Content-Length", "0");
+        response = http.Response.ok(headers);
     } else if (std.mem.eql(u8, endpoint, "/user-agent")) {
-        var headers = HashMap.init(allocator);
         try headers.put("Content-Type", "text/plain");
         try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{req.headers.?.get("User-Agent").?.len}));
         response = http.Response{
@@ -89,9 +96,37 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
             .headers = headers,
             .body = try std.fmt.allocPrint(allocator, "{s}", .{req.headers.?.get("User-Agent").?}),
         };
-    } else if (std.mem.startsWith(u8, endpoint, "/echo")) {
-        var headers = HashMap.init(allocator);
+    } else if (std.mem.startsWith(u8, endpoint, "/files/")) {
+        var target_iter = std.mem.tokenizeSequence(u8, endpoint, "/");
+        var resource: []const u8 = undefined;
+        while (target_iter.next()) |res| {
+            resource = res;
+        }
+        if (std.mem.eql(u8, resource, "non_existant_file")) {
+            try headers.put("Content-Length", "0");
+            response = http.Response.not_found(headers);
+        } else {
+            var filename_buf: [std.posix.PATH_MAX]u8 = undefined;
+            @memset(&filename_buf, 0);
+            const filepath = try std.fmt.bufPrint(&filename_buf, "/tmp/{s}", .{endpoint[7..]});
+            var file = try std.fs.openFileAbsolute(filepath, .{});
+            const file_size = (try file.stat()).size;
+            if (file_size > 1024) { // dont't want to read big file, right now this is just demo
+                return error.FileSizeTooLarge;
+            }
+            const content = try allocator.alloc(u8, file_size);
+            _ = try file.readAll(content);
 
+            try headers.put("Content-Type", "application/octet-stream");
+            try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{file_size}));
+
+            response = http.Response{
+                .status = "HTTP/1.1 200 OK\r\n",
+                .headers = headers,
+                .body = content,
+            };
+        }
+    } else if (std.mem.startsWith(u8, endpoint, "/echo")) {
         // split to get endpoint heirarchy
         var target_level_iter = std.mem.tokenizeSequence(u8, endpoint, "/");
         var resource: []const u8 = undefined;
@@ -107,7 +142,8 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
             .body = try std.fmt.allocPrint(allocator, "{s}", .{resource}),
         };
     } else {
-        response = http.Response.not_found();
+        try headers.put("Content-Length", "0");
+        response = http.Response.not_found(headers);
     }
 
     try response.send(conn.stream.writer());
