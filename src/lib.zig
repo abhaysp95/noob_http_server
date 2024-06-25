@@ -55,19 +55,22 @@ pub fn parse_request(conn: *const Connection, allocator: std.mem.Allocator) !Req
     const status = try allocator.dupe(u8, buf[0..cursor.?]);
     cursor.? += 1;
 
-    var headers = HashMap.init(allocator);
+    var headers: HashMap = undefined;
+    if (buf_len > cursor.? + 3) { // check for \r\n\r\n
+        headers = HashMap.init(allocator);
 
-    var header_iter = std.mem.splitSequence(u8, buf[cursor.?..], "\r\n");
-    while (header_iter.next()) |header| {
-        if (header.len == 0) { // end of headers
-            cursor.? += 2; // skip past CRLF
-            break;
+        var header_iter = std.mem.splitSequence(u8, buf[cursor.?..], "\r\n");
+        while (header_iter.next()) |header| {
+            if (header.len == 0) { // end of headers
+                cursor.? += 2; // skip past CRLF
+                break;
+            }
+            const colon_idx = std.mem.indexOf(u8, header, ": ");
+            const key = try allocator.dupe(u8, header[0..colon_idx.?]);
+            const value = try allocator.dupe(u8, header[colon_idx.? + 2 ..]);
+            try headers.put(key, value);
+            cursor.? += header.len + 2;
         }
-        const colon_idx = std.mem.indexOf(u8, header, ": ");
-        const key = try allocator.dupe(u8, header[0..colon_idx.?]);
-        const value = try allocator.dupe(u8, header[colon_idx.? + 2 ..]);
-        try headers.put(key, value);
-        cursor.? += header.len + 2;
     }
 
     var body: ?[]u8 = null;
