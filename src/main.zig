@@ -92,7 +92,7 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
 
     if (std.mem.eql(u8, endpoint, "/")) {
         try headers.put("Content-Length", "0");
-        response = try http.Response.success(200, "OK", headers);
+        response = try http.Response.success(200, "OK", headers, allocator);
     } else if (std.mem.eql(u8, endpoint, "/user-agent")) {
         try headers.put("Content-Type", "text/plain");
         try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{req.headers.?.get("User-Agent").?.len}));
@@ -148,7 +148,7 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
                 // we don't have use for header as of now
                 try write_file(directory_path, resource, req.body.?);
                 try headers.put("Content-Length", "0");
-                response = try http.Response.success(201, "Created", headers);
+                response = try http.Response.success(201, "Created", headers, allocator);
             },
             else => {},
         }

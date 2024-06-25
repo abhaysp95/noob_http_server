@@ -9,11 +9,10 @@ pub const Response = struct {
     headers: ?HashMap,
     body: ?[]const u8,
 
-    pub fn success(success_code: u16, msg: []const u8, header: ?HashMap) !Response {
-        var buf: [127]u8 = undefined;
-        @memset(&buf, 0);
+    pub fn success(success_code: u16, msg: []const u8, header: ?HashMap, allocator: std.mem.Allocator) !Response {
+        // NOTE: 201 is not working with buf, but 200 and 404 below are working fine. Why ?
         const response = Response{
-            .status = try std.fmt.bufPrint(&buf, "HTTP/1.1 {d} {s}\r\n", .{ success_code, msg }),
+            .status = try std.fmt.allocPrint(allocator, "HTTP/1.1 {d} {s}\r\n", .{ success_code, msg }),
             .headers = header,
             .body = null,
         };
