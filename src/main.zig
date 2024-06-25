@@ -106,7 +106,7 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
         while (target_iter.next()) |res| {
             resource = res;
         }
-        if (std.mem.eql(u8, resource, "non_existant_file")) {
+        if (std.mem.startsWith(u8, resource, "non_existant")) {
             try headers.put("Content-Length", "0");
             response = http.Response.not_found(headers);
         } else {
