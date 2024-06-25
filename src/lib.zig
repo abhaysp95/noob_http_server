@@ -9,18 +9,18 @@ pub const Response = struct {
     headers: ?HashMap,
     body: ?[]const u8,
 
-    pub fn ok() Response {
+    pub fn ok(header: ?HashMap) Response {
         return .{
-            .status = "HTTP/1.1 200 OK\r\n\r\n",
-            .headers = null,
+            .status = "HTTP/1.1 200 OK\r\n",
+            .headers = header,
             .body = null,
         };
     }
 
-    pub fn not_found() Response {
+    pub fn not_found(header: ?HashMap) Response {
         return .{
-            .status = "HTTP/1.1 404 Not Found\r\n\r\n",
-            .headers = null,
+            .status = "HTTP/1.1 404 Not Found\r\n",
+            .headers = header,
             .body = null,
         };
     }
@@ -36,11 +36,13 @@ pub const Response = struct {
             while (header_iter.next()) |entry| {
                 try writer.print("{s}: {s}\r\n", .{ entry.key_ptr.*, entry.value_ptr.* });
             }
-            _ = try writer.write("\r\n"); // mark ending of headers
         }
 
         if (self.body) |body| {
+            _ = try writer.write("\r\n"); // mark ending of headers
             try writer.writeAll(body);
+        } else {
+            _ = try writer.write("\r\n"); // mark ending of headers or statusline
         }
     }
 };
