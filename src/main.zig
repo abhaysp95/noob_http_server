@@ -8,13 +8,17 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var arena = std.heap.ArenaAllocator.init(gpa.allocator());
 const debug = std.debug.print;
 const stdout = std.io.getStdOut().writer();
+const stderr = std.io.getStdErr().writer();
 
 fn sigint_handler(signum: i32) callconv(.C) void {
     debug("\nCaught the signal {d}. Exiting gracefully...\n\n", .{signum});
-    // do cleanup
-    arena.deinit();
+    do_cleanup();
 
     std.process.exit(1);
+}
+
+fn do_cleanup() void {
+    arena.deinit();
 }
 
 fn register_signal() void {
@@ -106,24 +110,32 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
             try headers.put("Content-Length", "0");
             response = http.Response.not_found(headers);
         } else {
-            var filename_buf: [std.posix.PATH_MAX]u8 = undefined;
-            @memset(&filename_buf, 0);
-            const filepath = try std.fmt.bufPrint(&filename_buf, "/tmp/{s}", .{endpoint[7..]});
-            var file = try std.fs.openFileAbsolute(filepath, .{});
-            const file_size = (try file.stat()).size;
-            if (file_size > 1024) { // dont't want to read big file, right now this is just demo
-                return error.FileSizeTooLarge;
+            // read file and all
+            const args = try std.process.argsAlloc(allocator);
+            defer std.process.argsFree(allocator, args);
+            if (args.len < 3 or !std.mem.eql(u8, args[1], "--directory") or std.mem.endsWith(u8, args[2], "/")) {
+                try stderr.print("Directory name not provided.\nUsage: ./server --directory <path_to_file>\n", .{});
+                handle_error(conn);
+                do_cleanup();
+                std.process.exit(1); // exiting because server needs to run again for this to pass
             }
-            const content = try allocator.alloc(u8, file_size);
-            _ = try file.readAll(content);
+            const directory_path = args[2];
+            const file_content = read_file(directory_path, allocator) catch |err| {
+                if (error.FileNotFound == err) {
+                    try headers.put("Content-Length", "0");
+                    response = http.Response.not_found(headers); // return 404
+                    return;
+                }
+                return err; // will return 500
+            };
 
             try headers.put("Content-Type", "application/octet-stream");
-            try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{file_size}));
+            try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{file_content.len}));
 
             response = http.Response{
                 .status = "HTTP/1.1 200 OK\r\n",
                 .headers = headers,
-                .body = content,
+                .body = file_content,
             };
         }
     } else if (std.mem.startsWith(u8, endpoint, "/echo")) {
@@ -150,5 +162,19 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
 }
 
 fn handle_error(conn: *const Connection) void {
-    conn.stream.writeAll("HTTP/1.1 500 Internal Server Error\r\n") catch return;
+    conn.stream.writeAll("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n") catch return;
+}
+
+fn read_file(file_path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+    var file = std.fs.openFileAbsolute(file_path, .{}) catch |err| {
+        if (std.fs.File.OpenError.FileNotFound == err) {
+            return error.FileNotFound;
+        }
+        return err;
+    };
+    if ((try file.stat()).size > 1024) {
+        return error.FileSizeTooLarge;
+    }
+
+    return file.readToEndAlloc(allocator, @as(usize, 0) -% 1);
 }
