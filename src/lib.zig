@@ -9,17 +9,25 @@ pub const Response = struct {
     headers: ?HashMap,
     body: ?[]const u8,
 
-    pub fn ok(header: ?HashMap) Response {
-        return .{
-            .status = "HTTP/1.1 200 OK\r\n",
+    pub fn success(success_code: u16, msg: []const u8, header: ?HashMap) !Response {
+        var buf: [127]u8 = undefined;
+        @memset(&buf, 0);
+        const response = Response{
+            .status = try std.fmt.bufPrint(&buf, "HTTP/1.1 {d} {s}\r\n", .{ success_code, msg }),
             .headers = header,
             .body = null,
         };
+
+        debug("resp status line: {s}\n", .{response.status});
+        debug("resp status line len: {d}\n", .{response.status.len});
+        return response;
     }
 
-    pub fn not_found(header: ?HashMap) Response {
+    pub fn client_error(client_error_code: u16, msg: []const u8, header: ?HashMap) !Response {
+        var buf: [127]u8 = undefined;
+        @memset(&buf, 0);
         return .{
-            .status = "HTTP/1.1 404 Not Found\r\n",
+            .status = try std.fmt.bufPrint(&buf, "HTTP/1.1 {d} {s}\r\n", .{ client_error_code, msg }),
             .headers = header,
             .body = null,
         };
@@ -47,7 +55,7 @@ pub const Response = struct {
     }
 };
 
-const Verb = enum { GET, POST, PUT, DELETE, PATCH };
+pub const Verb = enum { GET, POST, PUT, DELETE, PATCH };
 
 pub fn parse_request(conn: *const Connection, allocator: std.mem.Allocator) !Request {
     var buf: [1024]u8 = undefined;
