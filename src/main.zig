@@ -120,6 +120,7 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
             if (error.FileNotFound == err) {
                 try headers.put("Content-Length", "0");
                 response = http.Response.not_found(headers); // return 404
+                try response.send(conn.stream.writer());
                 return;
             }
             return err; // will return 500
