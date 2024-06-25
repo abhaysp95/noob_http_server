@@ -169,7 +169,7 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
         };
     } else {
         try headers.put("Content-Length", "0");
-        response = try http.Response.client_error(400, "Bad Request", headers);
+        response = try http.Response.client_error(404, "Not Found", headers);
     }
 
     try response.send(conn.stream.writer());
