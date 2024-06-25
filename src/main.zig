@@ -126,7 +126,7 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
                 const file_content = read_file(directory_path, resource, allocator) catch |err| {
                     if (error.FileNotFound == err) {
                         try headers.put("Content-Length", "0");
-                        response = try http.Response.client_error(404, "NOT_FOUND", headers); // return 404
+                        response = try http.Response.client_error(404, "Not Found", headers); // return 404
                         try response.send(conn.stream.writer());
                         return;
                     }
