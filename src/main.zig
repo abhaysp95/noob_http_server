@@ -3,13 +3,14 @@ const http = @import("./lib.zig");
 const net = std.net;
 const Connection = std.net.Server.Connection;
 const HashMap = std.StringHashMap([]const u8);
+const ThreadPool = std.Thread.Pool;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var arena = std.heap.ArenaAllocator.init(gpa.allocator());
 const debug = std.debug.print;
 const stdout = std.io.getStdOut().writer();
 
 fn sigint_handler(signum: i32) callconv(.C) void {
-    debug("Caught the signal {d}. Exiting gracefully...\n", .{signum});
+    debug("\nCaught the signal {d}. Exiting gracefully...\n\n", .{signum});
     // do cleanup
     arena.deinit();
 
@@ -35,24 +36,40 @@ fn register_signal() void {
     }
 }
 
+const THREAD_COUNT = 7;
+
+fn handle_connection(connection: Connection, allocator: std.mem.Allocator) void {
+    const req = http.parse_request(&connection, allocator) catch return handle_error(&connection);
+    handle_endpoints(&connection, &req, allocator) catch return handle_error(&connection);
+}
+
 pub fn main() !void {
     const allocator = arena.allocator();
     defer arena.deinit();
 
+    // standalone thread for signal handling
     _ = try std.Thread.spawn(.{}, register_signal, .{});
+
+    var pool: ThreadPool = undefined;
+    try pool.init(.{
+        .allocator = allocator,
+        .n_jobs = THREAD_COUNT,
+    });
+    errdefer pool.deinit();
+    defer pool.deinit();
 
     const address = try net.Address.resolveIp("127.0.0.1", 4221);
     var listener = try address.listen(.{
         .reuse_address = true,
     });
+
     defer listener.deinit();
 
-    var connection = try listener.accept();
-    defer connection.stream.close();
-    try stdout.print("client connected!\n", .{});
-
-    const req = try http.parse_request(&connection, allocator);
-    try handle_endpoints(&connection, &req, allocator);
+    while (true) {
+        const connection = try listener.accept();
+        try stdout.print("client connected!\n", .{});
+        try pool.spawn(handle_connection, .{ connection, allocator });
+    }
 }
 
 fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator: std.mem.Allocator) !void {
@@ -94,4 +111,8 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
     }
 
     try response.send(conn.stream.writer());
+}
+
+fn handle_error(conn: *const Connection) void {
+    conn.stream.writeAll("HTTP/1.1 500 Internal Server Error\r\n") catch return;
 }
