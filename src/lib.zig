@@ -55,7 +55,8 @@ pub fn parse_request(conn: *const Connection, allocator: std.mem.Allocator) !Req
     const status = try allocator.dupe(u8, buf[0..cursor.?]);
     cursor.? += 1;
 
-    var headers: HashMap = undefined;
+    var headers: ?HashMap = null;
+    var body: ?[]u8 = null;
     if (buf_len > cursor.? + 3) { // check for \r\n\r\n
         headers = HashMap.init(allocator);
 
@@ -68,14 +69,13 @@ pub fn parse_request(conn: *const Connection, allocator: std.mem.Allocator) !Req
             const colon_idx = std.mem.indexOf(u8, header, ": ");
             const key = try allocator.dupe(u8, header[0..colon_idx.?]);
             const value = try allocator.dupe(u8, header[colon_idx.? + 2 ..]);
-            try headers.put(key, value);
+            try headers.?.put(key, value);
             cursor.? += header.len + 2;
         }
-    }
 
-    var body: ?[]u8 = null;
-    if (buf_len > cursor.? + 1) {
-        body = try allocator.dupe(u8, buf[cursor.?..buf_len]);
+        if (buf_len > cursor.? + 1) {
+            body = try allocator.dupe(u8, buf[cursor.?..buf_len]);
+        }
     }
 
     return .{
