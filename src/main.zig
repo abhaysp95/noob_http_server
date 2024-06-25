@@ -113,14 +113,14 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
             // read file and all
             const args = try std.process.argsAlloc(allocator);
             defer std.process.argsFree(allocator, args);
-            if (args.len < 3 or !std.mem.eql(u8, args[1], "--directory") or std.mem.endsWith(u8, args[2], "/")) {
+            if (args.len < 3 or !std.mem.eql(u8, args[1], "--directory") or !std.mem.endsWith(u8, args[2], "/")) {
                 try stderr.print("Directory name not provided.\nUsage: ./server --directory <path_to_file>\n", .{});
                 handle_error(conn);
                 do_cleanup();
                 std.process.exit(1); // exiting because server needs to run again for this to pass
             }
             const directory_path = args[2];
-            const file_content = read_file(directory_path, allocator) catch |err| {
+            const file_content = read_file(directory_path, resource, allocator) catch |err| {
                 if (error.FileNotFound == err) {
                     try headers.put("Content-Length", "0");
                     response = http.Response.not_found(headers); // return 404
@@ -165,8 +165,14 @@ fn handle_error(conn: *const Connection) void {
     conn.stream.writeAll("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n") catch return;
 }
 
-fn read_file(file_path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
-    var file = std.fs.openFileAbsolute(file_path, .{}) catch |err| {
+fn read_file(dir_path: []const u8, file_path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+    var dir = std.fs.openDirAbsolute(dir_path, .{}) catch |err| {
+        if (std.fs.File.OpenError.FileNotFound == err) {
+            return error.FileNotFound;
+        }
+        return err;
+    };
+    var file = dir.openFile(file_path, .{}) catch |err| {
         if (std.fs.File.OpenError.FileNotFound == err) {
             return error.FileNotFound;
         }
