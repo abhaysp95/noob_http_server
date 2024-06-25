@@ -106,38 +106,33 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
         while (target_iter.next()) |res| {
             resource = res;
         }
-        if (std.mem.startsWith(u8, resource, "non_existant")) {
-            try headers.put("Content-Length", "0");
-            response = http.Response.not_found(headers);
-        } else {
-            // read file and all
-            const args = try std.process.argsAlloc(allocator);
-            defer std.process.argsFree(allocator, args);
-            if (args.len < 3 or !std.mem.eql(u8, args[1], "--directory") or !std.mem.endsWith(u8, args[2], "/")) {
-                try stderr.print("Directory name not provided.\nUsage: ./server --directory <path_to_file>\n", .{});
-                handle_error(conn);
-                do_cleanup();
-                std.process.exit(1); // exiting because server needs to run again for this to pass
-            }
-            const directory_path = args[2];
-            const file_content = read_file(directory_path, resource, allocator) catch |err| {
-                if (error.FileNotFound == err) {
-                    try headers.put("Content-Length", "0");
-                    response = http.Response.not_found(headers); // return 404
-                    return;
-                }
-                return err; // will return 500
-            };
-
-            try headers.put("Content-Type", "application/octet-stream");
-            try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{file_content.len}));
-
-            response = http.Response{
-                .status = "HTTP/1.1 200 OK\r\n",
-                .headers = headers,
-                .body = file_content,
-            };
+        // read file and all
+        const args = try std.process.argsAlloc(allocator);
+        defer std.process.argsFree(allocator, args);
+        if (args.len < 3 or !std.mem.eql(u8, args[1], "--directory") or !std.mem.endsWith(u8, args[2], "/")) {
+            try stderr.print("Directory name not provided.\nUsage: ./server --directory <path_to_file>\n", .{});
+            handle_error(conn);
+            do_cleanup();
+            std.process.exit(1); // exiting because server needs to run again for this to pass
         }
+        const directory_path = args[2];
+        const file_content = read_file(directory_path, resource, allocator) catch |err| {
+            if (error.FileNotFound == err) {
+                try headers.put("Content-Length", "0");
+                response = http.Response.not_found(headers); // return 404
+                return;
+            }
+            return err; // will return 500
+        };
+
+        try headers.put("Content-Type", "application/octet-stream");
+        try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{file_content.len}));
+
+        response = http.Response{
+            .status = "HTTP/1.1 200 OK\r\n",
+            .headers = headers,
+            .body = file_content,
+        };
     } else if (std.mem.startsWith(u8, endpoint, "/echo")) {
         // split to get endpoint heirarchy
         var target_level_iter = std.mem.tokenizeSequence(u8, endpoint, "/");
