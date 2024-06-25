@@ -84,14 +84,15 @@ pub fn main() !void {
 
 fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator: std.mem.Allocator) !void {
     var req_status_iter = std.mem.splitSequence(u8, req.status, " ");
-    _ = req_status_iter.next(); // no need for req HTTP verb
+    const verb_status_line = req_status_iter.next().?; // no need for req HTTP verb
     const endpoint = req_status_iter.next().?;
 
     var response: http.Response = undefined;
     var headers = HashMap.init(allocator);
+
     if (std.mem.eql(u8, endpoint, "/")) {
         try headers.put("Content-Length", "0");
-        response = http.Response.ok(headers);
+        response = try http.Response.success(200, "OK", headers);
     } else if (std.mem.eql(u8, endpoint, "/user-agent")) {
         try headers.put("Content-Type", "text/plain");
         try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{req.headers.?.get("User-Agent").?.len}));
@@ -116,24 +117,41 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
             std.process.exit(1); // exiting because server needs to run again for this to pass
         }
         const directory_path = args[2];
-        const file_content = read_file(directory_path, resource, allocator) catch |err| {
-            if (error.FileNotFound == err) {
+
+        const verb = std.meta.stringToEnum(http.Verb, verb_status_line) orelse {
+            return error.UnknownVerb;
+        };
+        switch (verb) {
+            .GET => {
+                const file_content = read_file(directory_path, resource, allocator) catch |err| {
+                    if (error.FileNotFound == err) {
+                        try headers.put("Content-Length", "0");
+                        response = try http.Response.client_error(404, "NOT_FOUND", headers); // return 404
+                        try response.send(conn.stream.writer());
+                        return;
+                    }
+                    return err; // will return 500
+                };
+                try headers.put("Content-Type", "application/octet-stream");
+                try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{file_content.len}));
+
+                response = http.Response{
+                    .status = "HTTP/1.1 200 OK\r\n",
+                    .headers = headers,
+                    .body = file_content,
+                };
+            },
+            .POST => {
+                if (null == req.body) {
+                    return error.BodyNotFound;
+                }
+                // we don't have use for header as of now
+                try write_file(directory_path, resource, req.body.?);
                 try headers.put("Content-Length", "0");
-                response = http.Response.not_found(headers); // return 404
-                try response.send(conn.stream.writer());
-                return;
-            }
-            return err; // will return 500
-        };
-
-        try headers.put("Content-Type", "application/octet-stream");
-        try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{file_content.len}));
-
-        response = http.Response{
-            .status = "HTTP/1.1 200 OK\r\n",
-            .headers = headers,
-            .body = file_content,
-        };
+                response = try http.Response.success(201, "Created", headers);
+            },
+            else => {},
+        }
     } else if (std.mem.startsWith(u8, endpoint, "/echo")) {
         // split to get endpoint heirarchy
         var target_level_iter = std.mem.tokenizeSequence(u8, endpoint, "/");
@@ -151,7 +169,7 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
         };
     } else {
         try headers.put("Content-Length", "0");
-        response = http.Response.not_found(headers);
+        response = try http.Response.client_error(400, "Bad Request", headers);
     }
 
     try response.send(conn.stream.writer());
@@ -174,9 +192,33 @@ fn read_file(dir_path: []const u8, file_path: []const u8, allocator: std.mem.All
         }
         return err;
     };
+    defer dir.close();
+    defer file.close();
     if ((try file.stat()).size > 1024) {
         return error.FileSizeTooLarge;
     }
 
     return file.readToEndAlloc(allocator, @as(usize, 0) -% 1);
+}
+
+fn write_file(dir_path: []const u8, file_path: []const u8, content: []const u8) !void {
+    var dir = std.fs.openDirAbsolute(dir_path, .{}) catch |err| {
+        if (std.fs.File.OpenError.FileNotFound == err) {
+            return error.FileNotFound;
+        }
+        return err;
+    };
+    if (dir_path.len + file_path.len + 1 > std.posix.PATH_MAX) {
+        return error.FileNameTooLarge;
+    }
+    var file = dir.createFile(file_path, .{ .exclusive = false, .truncate = true }) catch |err| {
+        if (std.fs.File.OpenError.PathAlreadyExists == err or std.fs.File.OpenError.AccessDenied == err) {
+            return error.FileCreationFailed;
+        }
+        return err;
+    };
+    defer dir.close();
+    defer file.close();
+
+    file.writeAll(content) catch |err| return err;
 }
