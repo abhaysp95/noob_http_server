@@ -1,5 +1,6 @@
 const std = @import("std");
-const http = @import("./lib.zig");
+const http = @import("./http.zig");
+const util = @import("./util.zig");
 const net = std.net;
 const Connection = std.net.Server.Connection;
 const HashMap = std.StringHashMap([]const u8);
@@ -123,7 +124,7 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
         };
         switch (verb) {
             .GET => {
-                const file_content = read_file(directory_path, resource, allocator) catch |err| {
+                const file_content = util.read_file(directory_path, resource, allocator) catch |err| {
                     if (error.FileNotFound == err) {
                         try headers.put("Content-Length", "0");
                         response = try http.Response.client_error(404, "Not Found", headers); // return 404
@@ -146,7 +147,7 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
                     return error.BodyNotFound;
                 }
                 // we don't have use for header as of now
-                try write_file(directory_path, resource, req.body.?);
+                try util.write_file(directory_path, resource, req.body.?);
                 try headers.put("Content-Length", "0");
                 response = try http.Response.success(201, "Created", headers, allocator);
             },
@@ -162,6 +163,11 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
 
         try headers.put("Content-Type", "text/plain");
         try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{resource.len}));
+        if (req.headers) |req_headers| {
+            if (req_headers.get("Accept-Encoding")) |encoding| {
+                try headers.put("Content-Encoding", encoding);
+            }
+        }
         response = http.Response{
             .status = "HTTP/1.1 200 OK\r\n",
             .headers = headers,
@@ -177,48 +183,4 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
 
 fn handle_error(conn: *const Connection) void {
     conn.stream.writeAll("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n") catch return;
-}
-
-fn read_file(dir_path: []const u8, file_path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
-    var dir = std.fs.openDirAbsolute(dir_path, .{}) catch |err| {
-        if (std.fs.File.OpenError.FileNotFound == err) {
-            return error.FileNotFound;
-        }
-        return err;
-    };
-    var file = dir.openFile(file_path, .{}) catch |err| {
-        if (std.fs.File.OpenError.FileNotFound == err) {
-            return error.FileNotFound;
-        }
-        return err;
-    };
-    defer dir.close();
-    defer file.close();
-    if ((try file.stat()).size > 1024) {
-        return error.FileSizeTooLarge;
-    }
-
-    return file.readToEndAlloc(allocator, @as(usize, 0) -% 1);
-}
-
-fn write_file(dir_path: []const u8, file_path: []const u8, content: []const u8) !void {
-    var dir = std.fs.openDirAbsolute(dir_path, .{}) catch |err| {
-        if (std.fs.File.OpenError.FileNotFound == err) {
-            return error.FileNotFound;
-        }
-        return err;
-    };
-    if (dir_path.len + file_path.len + 1 > std.posix.PATH_MAX) {
-        return error.FileNameTooLarge;
-    }
-    var file = dir.createFile(file_path, .{ .exclusive = false, .truncate = true }) catch |err| {
-        if (std.fs.File.OpenError.PathAlreadyExists == err or std.fs.File.OpenError.AccessDenied == err) {
-            return error.FileCreationFailed;
-        }
-        return err;
-    };
-    defer dir.close();
-    defer file.close();
-
-    file.writeAll(content) catch |err| return err;
 }
