@@ -1,4 +1,5 @@
 const std = @import("std");
+const gzip = std.compress.gzip;
 
 pub fn read_file(dir_path: []const u8, file_path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
     var dir = std.fs.openDirAbsolute(dir_path, .{}) catch |err| {
@@ -42,4 +43,20 @@ pub fn write_file(dir_path: []const u8, file_path: []const u8, content: []const 
     defer file.close();
 
     file.writeAll(content) catch |err| return err;
+}
+
+pub fn gzip_compressed(resource: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    // make the body here
+    var encoding_stream = std.io.fixedBufferStream(resource);
+    // TODO: figure out how to decide on the compression buf size ?
+    // or we break the body to buf of some size and compress it and then send it
+    // and then client will aggregate it..., hmm
+    if (resource.len > 1024) {
+        return error.BodyTooLarge;
+    }
+    const encoding_buf = try allocator.alloc(u8, 1024);
+    var body_stream = std.io.fixedBufferStream(encoding_buf);
+    try gzip.compress(encoding_stream.reader(), body_stream.writer(), .{});
+
+    return encoding_buf;
 }

@@ -5,7 +5,6 @@ const net = std.net;
 const Connection = std.net.Server.Connection;
 const HashMap = std.StringHashMap([]const u8);
 const ThreadPool = std.Thread.Pool;
-const gzip = std.compress.gzip;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var arena = std.heap.ArenaAllocator.init(gpa.allocator());
 const debug = std.debug.print;
@@ -168,23 +167,17 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
                 try headers.put("Content-Encoding", encoding);
             }
         }
-        var body: []u8 = undefined;
-        if (headers.get("Content-Encoding")) |encoding| {
+
+        const encoding = headers.get("Content-Encoding");
+        var body: ?[]u8 = null;
+        if (resource.len != 0 and null != encoding and std.mem.containsAtLeast(u8, encoding.?, 1, "gzip")) {
             // currently only gzip compression is supported
-            if (std.mem.containsAtLeast(u8, encoding, 1, "gzip")) {
-                // make the body here
-                var encoding_stream = std.io.fixedBufferStream(encoding);
-                body = try allocator.alloc(u8, 1024);
-                var body_stream = std.io.fixedBufferStream(body);
-                try gzip.compress(encoding_stream.reader(), body_stream.writer(), .{});
-                try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{body.len}));
-            } else {
-                try headers.put("Content-Length", "0");
-            }
+            body = try util.gzip_compressed(resource, allocator);
+            try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{body.?.len}));
         } else {
-            try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{resource.len}));
-            body = try std.fmt.allocPrint(allocator, "{s}", .{resource});
+            try headers.put("Content-Length", "0");
         }
+
         response = http.Response{
             .status = "HTTP/1.1 200 OK\r\n",
             .headers = headers,
