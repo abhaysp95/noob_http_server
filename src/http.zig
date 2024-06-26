@@ -3,6 +3,9 @@ const Connection = std.net.Server.Connection;
 const HashMap = std.StringHashMap([]const u8);
 const debug = std.debug.print;
 
+pub const Verb = enum { GET, POST, PUT, DELETE, PATCH };
+pub const Encoding = enum { gzip };
+
 pub const Request = struct { status: []const u8, headers: ?HashMap, body: ?[]const u8 };
 pub const Response = struct {
     status: []const u8,
@@ -54,8 +57,6 @@ pub const Response = struct {
     }
 };
 
-pub const Verb = enum { GET, POST, PUT, DELETE, PATCH };
-
 pub fn parse_request(conn: *const Connection, allocator: std.mem.Allocator) !Request {
     var buf: [1024]u8 = undefined;
     const buf_len = try conn.stream.read(&buf);
@@ -75,11 +76,18 @@ pub fn parse_request(conn: *const Connection, allocator: std.mem.Allocator) !Req
                 cursor.? += 2; // skip past CRLF
                 break;
             }
+            cursor.? += header.len + 2;
+
             const colon_idx = std.mem.indexOf(u8, header, ": ");
             const key = try allocator.dupe(u8, header[0..colon_idx.?]);
             const value = try allocator.dupe(u8, header[colon_idx.? + 2 ..]);
+            if (std.mem.eql(u8, key, "Accept-Encoding")) {
+                // if encoding is supported
+                if (null == std.meta.stringToEnum(Encoding, value)) {
+                    continue;
+                }
+            }
             try headers.?.put(key, value);
-            cursor.? += header.len + 2;
         }
 
         if (buf_len > cursor.? + 1) {
