@@ -179,6 +179,9 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
             // defer allocator.free(body);
 
             try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{body.len}));
+        } else if (resource.len != 0) {
+            try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{resource.len}));
+            body = try allocator.dupe(u8, resource);
         } else {
             try headers.put("Content-Length", "0");
         }
