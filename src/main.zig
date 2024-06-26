@@ -173,6 +173,7 @@ fn handle_endpoints(conn: *const Connection, req: *const http.Request, allocator
         if (resource.len != 0 and null != encoding and std.mem.containsAtLeast(u8, encoding.?, 1, "gzip")) {
             // currently only gzip compression is supported
             body = try util.gzip_compressed(resource, allocator);
+            defer allocator.free(body.?);
             try headers.put("Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{body.?.len}));
         } else {
             try headers.put("Content-Length", "0");

@@ -1,5 +1,7 @@
 const std = @import("std");
 const gzip = std.compress.gzip;
+const debug = std.debug.print;
+const ArrayList = std.ArrayList;
 
 pub fn read_file(dir_path: []const u8, file_path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
     var dir = std.fs.openDirAbsolute(dir_path, .{}) catch |err| {
@@ -46,7 +48,6 @@ pub fn write_file(dir_path: []const u8, file_path: []const u8, content: []const 
 }
 
 pub fn gzip_compressed(resource: []const u8, allocator: std.mem.Allocator) ![]u8 {
-    // make the body here
     var encoding_stream = std.io.fixedBufferStream(resource);
     // TODO: figure out how to decide on the compression buf size ?
     // or we break the body to buf of some size and compress it and then send it
@@ -54,9 +55,8 @@ pub fn gzip_compressed(resource: []const u8, allocator: std.mem.Allocator) ![]u8
     if (resource.len > 1024) {
         return error.BodyTooLarge;
     }
-    const encoding_buf = try allocator.alloc(u8, 1024);
-    var body_stream = std.io.fixedBufferStream(encoding_buf);
-    try gzip.compress(encoding_stream.reader(), body_stream.writer(), .{});
+    var encoding_buf = ArrayList(u8).init(allocator);
+    try gzip.compress(encoding_stream.reader(), encoding_buf.writer(), .{});
 
-    return encoding_buf;
+    return try encoding_buf.toOwnedSlice();
 }
