@@ -81,13 +81,37 @@ pub fn parse_request(conn: *const Connection, allocator: std.mem.Allocator) !Req
             const colon_idx = std.mem.indexOf(u8, header, ": ");
             const key = try allocator.dupe(u8, header[0..colon_idx.?]);
             const value = try allocator.dupe(u8, header[colon_idx.? + 2 ..]);
+
+            // currently comma-seperated multiple encoding scheme supported
+            // TODO: probably to added multiple header encoding too ie., pass multiple headers in request
+            // which will have same key but different values
+            // TODO: check whether this be done for what different types of headers
             if (std.mem.eql(u8, key, "Accept-Encoding")) {
-                // if encoding is supported
-                if (null == std.meta.stringToEnum(Encoding, value)) {
-                    continue;
+                var encoding_str: ?[]u8 = null;
+                var iter = std.mem.splitSequence(u8, value, ", ");
+                while (iter.next()) |encoding| {
+                    // if encoding is supported
+                    if (null == std.meta.stringToEnum(Encoding, encoding)) {
+                        continue;
+                    }
+                    if (null == encoding_str) {
+                        encoding_str = try allocator.dupe(u8, encoding);
+                    } else {
+                        const old_len = encoding_str.?.len;
+                        encoding_str = try allocator.realloc(encoding_str.?, old_len + encoding.len + 2);
+                        std.mem.copyForwards(u8, encoding_str.?[old_len..], ", ");
+                        std.mem.copyForwards(u8, encoding_str.?[old_len + 2 ..], encoding);
+                    }
                 }
+                if (null != encoding_str) {
+                    if (std.mem.endsWith(u8, encoding_str.?, ", ")) {
+                        encoding_str = try allocator.realloc(encoding_str.?, encoding_str.?.len - 2);
+                    }
+                    try headers.?.put(key, encoding_str.?);
+                }
+            } else {
+                try headers.?.put(key, value);
             }
-            try headers.?.put(key, value);
         }
 
         if (buf_len > cursor.? + 1) {
