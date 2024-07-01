@@ -31,7 +31,7 @@ Here are the steps to build the project:
 
 * Follow the steps mentioned on the [zig's official site](https://ziglang.org/learn/getting-started/#installing-zig) and setup the language.
 * Run the command `zig build-exe src/main.zig` to build the executable
-* Run the executable to with `-h/--help` flag to know all the options on how to run the executable.
+* Simply run the executable as `./main`
 
 ---
 
